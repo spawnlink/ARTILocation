@@ -154,16 +154,16 @@
 
     <div id="ui-container" style="display: none;">
         <div class="control-group">
-            <label for="categorySelect">1. Filter by Category</label>
-            <select id="categorySelect">
-                <option value="">-- Show All Categories --</option>
+            <label for="locationSelect">1. Select Destination</label>
+            <select id="locationSelect">
+                <option value="">-- Tap to choose location --</option>
             </select>
         </div>
 
         <div class="control-group">
-            <label for="locationSelect">2. Select Destination</label>
-            <select id="locationSelect">
-                <option value="">-- Tap to choose --</option>
+            <label for="categorySelect">2. Filter by Type of Stop</label>
+            <select id="categorySelect" disabled>
+                <option value="">-- Choose destination first --</option>
             </select>
         </div>
     </div>
@@ -202,60 +202,42 @@
             document.getElementById('loading').style.display = 'none';
             document.getElementById('ui-container').style.display = 'block';
 
-            populateCategoryDropdown();
             populateLocationDropdown(); 
 
-            // Setup Event Listeners
-            document.getElementById('categorySelect').addEventListener('change', function() {
-                populateLocationDropdown(this.value);
-                document.getElementById('cardsContainer').innerHTML = ''; 
-            });
-
+            // Setup Listeners
             document.getElementById('locationSelect').addEventListener('change', function() {
                 const selectedLocationName = this.value;
-                const selectedCategory = document.getElementById('categorySelect').value;
+                document.getElementById('cardsContainer').innerHTML = ''; // Reset display
                 
                 if (selectedLocationName === "") {
-                    document.getElementById('cardsContainer').innerHTML = '';
+                    resetCategoryDropdown();
                 } else {
-                    displayAllAssociatedDetails(selectedLocationName, selectedCategory);
+                    populateCategoryDropdown(selectedLocationName);
+                }
+            });
+
+            document.getElementById('categorySelect').addEventListener('change', function() {
+                const selectedLocationName = document.getElementById('locationSelect').value;
+                const selectedCategory = this.value;
+                
+                if (selectedLocationName !== "" && selectedCategory !== "") {
+                    displayFilteredDetails(selectedLocationName, selectedCategory);
+                } else {
+                    document.getElementById('cardsContainer').innerHTML = '';
                 }
             });
         }
 
-        function populateCategoryDropdown() {
-            const catSelect = document.getElementById('categorySelect');
-            const categories = new Set();
-
-            globalData.forEach(row => {
-                const catValue = row['CATEGORY'] || row['Category'] || row['category'];
-                if (catValue && catValue.trim() !== '') {
-                    categories.add(catValue.trim());
-                }
-            });
-
-            categories.forEach(cat => {
-                const opt = document.createElement('option');
-                opt.value = cat;
-                opt.textContent = cat;
-                catSelect.appendChild(opt);
-            });
-        }
-
-        function populateLocationDropdown(filterCategory = '') {
+        function populateLocationDropdown() {
             const locSelect = document.getElementById('locationSelect');
-            locSelect.innerHTML = '<option value="">-- Tap to choose --</option>';
+            locSelect.innerHTML = '<option value="">-- Tap to choose location --</option>';
 
             const uniqueLocationNames = new Set();
 
             globalData.forEach(row => {
                 const locationName = row[primaryKey];
-                const catValue = row['CATEGORY'] || row['Category'] || row['category'] || '';
-
                 if (locationName && locationName.trim() !== '') {
-                    if (filterCategory === '' || catValue.trim() === filterCategory) {
-                        uniqueLocationNames.add(locationName.trim());
-                    }
+                    uniqueLocationNames.add(locationName.trim());
                 }
             });
 
@@ -267,7 +249,42 @@
             });
         }
 
-        function displayAllAssociatedDetails(targetLocationName, filterCategory) {
+        function populateCategoryDropdown(selectedLocationName) {
+            const catSelect = document.getElementById('categorySelect');
+            catSelect.innerHTML = '<option value="">-- Show All Types --</option>';
+            catSelect.disabled = false;
+
+            const associatedCategories = new Set();
+
+            // Find all matching row entries for this specific destination name
+            globalData.forEach(row => {
+                const nameMatch = row[primaryKey] && row[primaryKey].trim() === selectedLocationName;
+                if (nameMatch) {
+                    const catValue = row['CATEGORY'] || row['Category'] || row['category'];
+                    if (catValue && catValue.trim() !== '') {
+                        associatedCategories.add(catValue.trim());
+                    }
+                }
+            });
+
+            associatedCategories.forEach(cat => {
+                const opt = document.createElement('option');
+                opt.value = cat;
+                opt.textContent = cat;
+                catSelect.appendChild(opt);
+            });
+
+            // Immediately display all records for this destination before categorical narrowing
+            displayFilteredDetails(selectedLocationName, '');
+        }
+
+        function resetCategoryDropdown() {
+            const catSelect = document.getElementById('categorySelect');
+            catSelect.innerHTML = '<option value="">-- Choose destination first --</option>';
+            catSelect.disabled = true;
+        }
+
+        function displayFilteredDetails(targetLocationName, filterCategory) {
             const container = document.getElementById('cardsContainer');
             container.innerHTML = ''; 
 
@@ -289,7 +306,7 @@
                     card.appendChild(badge);
                 }
 
-                // 1. Pre-build the unified address string cleanly
+                // Process standard Address layout consolidation
                 const rawAddr = rowData['ADDRESS'] || rowData['Address'] || '';
                 const rawCity = rowData['CITY'] || rowData['City'] || '';
                 const rawState = rowData['STATE'] || rowData['State'] || '';
@@ -301,7 +318,6 @@
                 
                 const fullAddressString = addressParts.join(', ');
 
-                // 2. Insert the combined Full Address row first if any address info exists
                 if (fullAddressString) {
                     const addrRow = document.createElement('div');
                     addrRow.className = 'detail-row';
@@ -319,11 +335,10 @@
                     card.appendChild(addrRow);
                 }
 
-                // 3. Loop through headers, excluding individual Address/City/State to prevent duplication
                 headers.forEach(header => {
                     const upperHeader = header.toUpperCase();
                     if (upperHeader === 'ADDRESS' || upperHeader === 'CITY' || upperHeader === 'STATE') {
-                        return; // Skip rendering these individually
+                        return; 
                     }
 
                     const value = rowData[header];
