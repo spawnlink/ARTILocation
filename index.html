@@ -210,7 +210,6 @@
                 const selectedCategory = this.value;
                 
                 if (selectedLocationName !== "") {
-                    // If they select the blank option, revert to the fallback "Dock" rule
                     displayFilteredDetails(selectedLocationName, selectedCategory);
                 }
             });
@@ -239,12 +238,11 @@
 
         function populateCategoryDropdown(selectedLocationName) {
             const catSelect = document.getElementById('categorySelect');
-            // By default, the selection box placeholder reads empty
             catSelect.innerHTML = '<option value="">-- Select Alternate Type --</option>';
             catSelect.disabled = false;
 
             const associatedCategories = new Set();
-            let hasDock = false;
+            let matchedDockString = '';
 
             globalData.forEach(row => {
                 const nameMatch = row[primaryKey] && row[primaryKey].trim() === selectedLocationName;
@@ -253,8 +251,10 @@
                     if (catValue && catValue.trim() !== '') {
                         const cleanCat = catValue.trim();
                         associatedCategories.add(cleanCat);
-                        if (cleanCat.toUpperCase() === 'DOCK') {
-                            hasDock = true;
+                        
+                        // FIXED: Evaluates if the column text contains "dock" as a substring
+                        if (cleanCat.toUpperCase().includes('DOCK') && !matchedDockString) {
+                            matchedDockString = cleanCat;
                         }
                     }
                 }
@@ -267,10 +267,10 @@
                 catSelect.appendChild(opt);
             });
 
-            // Logic Adjustment: Instantly show 'Dock' layout by default if it exists.
-            // If no category explicitly reads 'Dock', fall back to showing the first available record.
-            if (hasDock) {
-                displayFilteredDetails(selectedLocationName, 'Dock');
+            // If a valid dock entry phrase variant is located, display it right away.
+            // Otherwise, resort to showing the first row structure available.
+            if (matchedDockString) {
+                displayFilteredDetails(selectedLocationName, matchedDockString);
             } else if (associatedCategories.size > 0) {
                 const firstAvailableCat = Array.from(associatedCategories)[0];
                 displayFilteredDetails(selectedLocationName, firstAvailableCat);
@@ -289,17 +289,19 @@
             const container = document.getElementById('cardsContainer');
             container.innerHTML = ''; 
 
-            // Find rows matching target criteria
             let matchingRows = globalData.filter(row => {
                 const nameMatch = row[primaryKey] && row[primaryKey].trim() === targetLocationName;
                 const catValue = row['CATEGORY'] || row['Category'] || row['category'] || '';
                 
-                // If filterCategory is left blank (default state), display the "Dock" row entry
-                const targetFilter = filterCategory === '' ? 'DOCK' : filterCategory.toUpperCase();
-                return nameMatch && catValue.trim().toUpperCase() === targetFilter;
+                // If the dynamic fallback parameter hits an empty state string expression, default to tracking down "DOCK"
+                if (filterCategory === '') {
+                    return nameMatch && catValue.trim().toUpperCase().includes('DOCK');
+                }
+                
+                return nameMatch && catValue.trim() === filterCategory;
             });
 
-            // Fallback safety catch: If looking for "Dock" returned 0 rows, look for any row matching the name string
+            // Hard safety recovery catch loop logic block
             if (matchingRows.length === 0 && filterCategory === '') {
                 matchingRows = globalData.filter(row => row[primaryKey] && row[primaryKey].trim() === targetLocationName);
             }
@@ -308,7 +310,6 @@
                 const card = document.createElement('div');
                 card.className = 'card';
 
-                // Process standard Address layout consolidation
                 const rawAddr = rowData['ADDRESS'] || rowData['Address'] || '';
                 const rawCity = rowData['CITY'] || rowData['City'] || '';
                 const rawState = rowData['STATE'] || rowData['State'] || '';
