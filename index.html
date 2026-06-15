@@ -143,9 +143,16 @@
 
     <div id="ui-container" style="display: none;">
         <div class="control-group">
-            <label for="locationSelect">Select Destination</label>
+            <label for="locationSelect">1. Select Destination</label>
             <select id="locationSelect">
-                <option value="">-- Tap to choose location --</option>
+                <option value="">-- Tap to choose destination --</option>
+            </select>
+        </div>
+
+        <div class="control-group">
+            <label for="categorySelect">2. Filter by Type of Stop</label>
+            <select id="categorySelect" disabled>
+                <option value="">-- Choose destination first --</option>
             </select>
         </div>
     </div>
@@ -157,8 +164,9 @@
         
         let globalData = [];
         let headers = [];
-        let primaryKey = ''; 
-        let nameAreaColumnHeader = ''; 
+        let firstColumnHeader = ''; 
+        let seventhColumnHeader = '';
+        let secondColumnHeader = '';
 
         Papa.parse(sheetUrl, {
             download: true,
@@ -169,10 +177,10 @@
                 headers = results.meta.fields;
                 
                 if (headers && headers.length > 0 && globalData.length > 0) {
-                    primaryKey = headers[0]; // Restored first column header (e.g., 'NAME OF STOP')
-                    
-                    // Locate the exact string casing for 'NAME' or 'NAME OF AREA'
-                    nameAreaColumnHeader = headers.find(h => h.toUpperCase() === 'NAME' || h.toUpperCase() === 'NAME OF AREA') || 'NAME';
+                    // Map headers precisely by exact column coordinates to prevent naming breakdown issues
+                    firstColumnHeader = headers[0]; 
+                    secondColumnHeader = headers[1] || 'NAME';
+                    seventhColumnHeader = headers[6] || 'CATEGORY';
                     
                     initUI();
                 } else {
@@ -194,25 +202,36 @@
             // Setup Listeners
             document.getElementById('locationSelect').addEventListener('change', function() {
                 const selectedLocationName = this.value;
+                document.getElementById('cardsContainer').innerHTML = ''; 
+                
                 if (selectedLocationName === "") {
-                    document.getElementById('cardsContainer').innerHTML = ''; 
+                    resetCategoryDropdown();
                 } else {
-                    displayDockDetails(selectedLocationName);
+                    populateCategoryDropdown(selectedLocationName);
+                }
+            });
+
+            document.getElementById('categorySelect').addEventListener('change', function() {
+                const selectedLocationName = document.getElementById('locationSelect').value;
+                const selectedCategory = this.value;
+                
+                if (selectedLocationName !== "" && selectedCategory !== "") {
+                    displayFilteredDetails(selectedLocationName, selectedCategory);
+                } else {
+                    document.getElementById('cardsContainer').innerHTML = '';
                 }
             });
         }
 
         function populateLocationDropdown() {
             const locSelect = document.getElementById('locationSelect');
-            locSelect.innerHTML = '<option value="">-- Tap to choose location --</option>';
+            locSelect.innerHTML = '<option value="">-- Tap to choose destination --</option>';
 
             const uniqueLocationNames = new Set();
 
             globalData.forEach(row => {
-                const locationName = row[primaryKey]; // Uses 'NAME OF STOP' for dropdown parsing
-                const catValue = row['CATEGORY'] || row['Category'] || row['category'] || '';
-                
-                if (locationName && locationName.trim() !== '' && catValue.toUpperCase().includes('DOCK')) {
+                const locationName = row[firstColumnHeader];
+                if (locationName && locationName.trim() !== '') {
                     uniqueLocationNames.add(locationName.trim());
                 }
             });
@@ -225,19 +244,54 @@
             });
         }
 
-        function displayDockDetails(targetLocationName) {
+        function populateCategoryDropdown(selectedLocationName) {
+            const catSelect = document.getElementById('categorySelect');
+            catSelect.innerHTML = '<option value="">-- Select Type of Stop --</option>';
+            catSelect.disabled = false;
+
+            const associatedCategories = new Set();
+
+            // Gather all 7th column options linked to the 1st column choice
+            globalData.forEach(row => {
+                const nameMatch = row[firstColumnHeader] && row[firstColumnHeader].trim() === selectedLocationName;
+                if (nameMatch) {
+                    const catValue = row[seventhColumnHeader];
+                    if (catValue && catValue.trim() !== '') {
+                        associatedCategories.add(catValue.trim());
+                    }
+                }
+            });
+
+            associatedCategories.forEach(cat => {
+                const opt = document.createElement('option');
+                opt.value = cat;
+                opt.textContent = cat;
+                catSelect.appendChild(opt);
+            });
+
+            // If there's exactly one option, auto-select it for the driver
+            if (associatedCategories.size === 1) {
+                const singleCat = Array.from(associatedCategories)[0];
+                catSelect.value = singleCat;
+                displayFilteredDetails(selectedLocationName, singleCat);
+            }
+        }
+
+        function resetCategoryDropdown() {
+            const catSelect = document.getElementById('categorySelect');
+            catSelect.innerHTML = '<option value="">-- Choose destination first --</option>';
+            catSelect.disabled = true;
+        }
+
+        function displayFilteredDetails(targetLocationName, filterCategory) {
             const container = document.getElementById('cardsContainer');
             container.innerHTML = ''; 
 
-            let matchingRows = globalData.filter(row => {
-                const nameMatch = row[primaryKey] && row[primaryKey].trim() === targetLocationName;
-                const catValue = row['CATEGORY'] || row['Category'] || row['category'] || '';
-                return nameMatch && catValue.trim().toUpperCase().includes('DOCK');
+            const matchingRows = globalData.filter(row => {
+                const nameMatch = row[firstColumnHeader] && row[firstColumnHeader].trim() === targetLocationName;
+                const catValue = row[seventhColumnHeader] || '';
+                return nameMatch && catValue.trim() === filterCategory;
             });
-
-            if (matchingRows.length === 0) {
-                matchingRows = globalData.filter(row => row[primaryKey] && row[primaryKey].trim() === targetLocationName);
-            }
 
             matchingRows.forEach(rowData => {
                 const card = document.createElement('div');
@@ -276,10 +330,10 @@
                     }
                 }
 
-                // 1. Force the layout to show 'NAME' (Averitt) at the top of the card
-                createDetailRow('NAME', rowData[nameAreaColumnHeader]);
+                // 1. Force the layout to show column 2 ('NAME') at the top of the card
+                createDetailRow('NAME', rowData[secondColumnHeader]);
 
-                // 2. Pre-build and insert the consolidated Full Address row second
+                // 2. Build and insert the consolidated Full Address row second
                 const rawAddr = rowData['ADDRESS'] || rowData['Address'] || '';
                 const rawCity = rowData['CITY'] || rowData['City'] || '';
                 const rawState = rowData['STATE'] || rowData['State'] || '';
@@ -294,12 +348,12 @@
                     createDetailRow('FULL ADDRESS', fullAddressString);
                 }
 
-                // 3. Loop through remaining headers, bypassing variables manually handled
+                // 3. Loop through remaining headers, bypassing variables already manually handled
                 headers.forEach(header => {
                     const upperHeader = header.toUpperCase();
                     
-                    // Strips 'NAME OF STOP' completely from the generated card layout output
-                    if (header === primaryKey || header === nameAreaColumnHeader || upperHeader === 'ADDRESS' || upperHeader === 'CITY' || upperHeader === 'STATE') {
+                    // Strips column 1 completely from the displayed layout output
+                    if (header === firstColumnHeader || header === secondColumnHeader || upperHeader === 'ADDRESS' || upperHeader === 'CITY' || upperHeader === 'STATE') {
                         return; 
                     }
                     createDetailRow(header, rowData[header]);
