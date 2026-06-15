@@ -137,7 +137,7 @@
 </head>
 <body>
 
-    <h1>Destination Details</h1>
+    <h1 id="appTitle">Destination Details</h1>
 
     <div id="loading" class="loading">Loading latest routes...</div>
 
@@ -160,13 +160,18 @@
     <div id="cardsContainer"></div>
 
     <script>
+        // --- APP CONFIGURATION ---
         const sheetUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTwqgYrq_LwJQnjhfPGDnSHA1w2icHipIpiPl7HhTjSO5lCX0mcXNRT1dgn-Q353jcEPXiiURZRo7Kd/pub?gid=1069003853&single=true&output=csv';
+        const versionNumber = 'v1.0'; // Edit this value to update the title version string on-screen
         
         let globalData = [];
         let headers = [];
-        let primaryKey = ''; // 1st Column Header (NAME OF STOP)
-        let nameAreaColumnHeader = ''; // 2nd Column Header (NAME)
-        let categoryColumnHeader = ''; // 7th Column Header (CATEGORY)
+        let primaryKey = ''; 
+        let nameAreaColumnHeader = ''; 
+        let categoryColumnHeader = ''; 
+
+        // Set the version string in the heading immediately on load
+        document.getElementById('appTitle').textContent = `Destination Details ${versionNumber}`;
 
         Papa.parse(sheetUrl, {
             download: true,
@@ -177,9 +182,9 @@
                 headers = results.meta.fields;
                 
                 if (headers && headers.length > 0 && globalData.length > 0) {
-                    primaryKey = headers[0]; // 1st column
-                    nameAreaColumnHeader = headers[1] || 'NAME'; // 2nd column
-                    categoryColumnHeader = headers[6] || 'CATEGORY'; // 7th column
+                    primaryKey = headers[0]; 
+                    nameAreaColumnHeader = headers[1] || 'NAME'; 
+                    categoryColumnHeader = headers[6] || 'CATEGORY'; 
                     
                     initUI();
                 } else {
@@ -269,20 +274,17 @@
                 opt.value = cat;
                 opt.textContent = cat;
                 
-                // If this item is our default auto-loaded dock, mark it as selected in the drop-down
                 if (cat === matchedDockString) {
                     opt.selected = true;
                 }
                 catSelect.appendChild(opt);
             });
 
-            // Auto-load matching dock data to screen immediately
             if (matchedDockString) {
                 displayFilteredDetails(selectedLocationName, matchedDockString);
             } else if (associatedCategories.size > 0) {
                 const firstAvailableCat = Array.from(associatedCategories)[0];
                 displayFilteredDetails(selectedLocationName, firstAvailableCat);
-                // Set the dropdown to match the fallback choice
                 catSelect.value = firstAvailableCat;
             } else {
                 displayFilteredDetails(selectedLocationName, '');
@@ -350,10 +352,8 @@
                     }
                 }
 
-                // 1. Force Column 2 (NAME) to render at the absolute top of the card
                 createDetailRow('NAME', rowData[nameAreaColumnHeader]);
 
-                // 2. Insert the combined Full Address row second
                 const rawAddr = rowData['ADDRESS'] || rowData['Address'] || '';
                 const rawCity = rowData['CITY'] || rowData['City'] || '';
                 const rawState = rowData['STATE'] || rowData['State'] || '';
@@ -368,7 +368,6 @@
                     createDetailRow('FULL ADDRESS', fullAddressString);
                 }
 
-                // 3. Loop through remaining headers, hiding Column 1 (primaryKey) from the card display
                 headers.forEach(header => {
                     const upperHeader = header.toUpperCase();
                     if (header === primaryKey || header === nameAreaColumnHeader || upperHeader === 'ADDRESS' || upperHeader === 'CITY' || upperHeader === 'STATE') {
