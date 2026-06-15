@@ -66,18 +66,28 @@
             background-size: 12px auto;
         }
 
+        #cardsContainer {
+            margin-top: 24px;
+        }
+
         .card { 
             background: var(--card-bg); 
             border-radius: 12px; 
             box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06); 
-            display: none; 
             overflow: hidden;
-            margin-top: 24px;
+            margin-bottom: 20px;
+            animation: fadeIn 0.3s ease-in-out;
         }
 
-        .card.active { 
-            display: block; 
-            animation: fadeIn 0.3s ease-in-out;
+        .card-header-badge {
+            background-color: #f3f4f6;
+            padding: 8px 20px;
+            font-size: 0.8rem;
+            font-weight: 700;
+            color: var(--text-muted);
+            border-bottom: 1px solid var(--border-color);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
         }
 
         .detail-row { 
@@ -106,7 +116,6 @@
             word-wrap: break-word;
         }
 
-        /* Large touch-friendly link styling for drivers */
         .driver-link {
             display: inline-block;
             color: #ffffff;
@@ -159,14 +168,14 @@
         </div>
     </div>
 
-    <div id="detailsCard" class="card"></div>
+    <div id="cardsContainer"></div>
 
     <script>
         const sheetUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTwqgYrq_LwJQnjhfPGDnSHA1w2icHipIpiPl7HhTjSO5lCX0mcXNRT1dgn-Q353jcEPXiiURZRo7Kd/pub?gid=1069003853&single=true&output=csv';
         
         let globalData = [];
         let headers = [];
-        let primaryKey = ''; // Will hold the first column header name dynamically
+        let primaryKey = ''; 
 
         Papa.parse(sheetUrl, {
             download: true,
@@ -177,7 +186,7 @@
                 headers = results.meta.fields;
                 
                 if (headers && headers.length > 0 && globalData.length > 0) {
-                    primaryKey = headers[0]; // First column (e.g., 'NAME OF STOP')
+                    primaryKey = headers[0]; 
                     initUI();
                 } else {
                     document.getElementById('loading').innerText = 'No data found in the spreadsheet.';
@@ -194,20 +203,22 @@
             document.getElementById('ui-container').style.display = 'block';
 
             populateCategoryDropdown();
-            populateLocationDropdown(); // Initially load all locations
+            populateLocationDropdown(); 
 
             // Setup Event Listeners
             document.getElementById('categorySelect').addEventListener('change', function() {
                 populateLocationDropdown(this.value);
-                document.getElementById('detailsCard').classList.remove('active'); // Hide card on filter change
+                document.getElementById('cardsContainer').innerHTML = ''; 
             });
 
             document.getElementById('locationSelect').addEventListener('change', function() {
-                const selectedIndex = this.value;
-                if (selectedIndex === "") {
-                    document.getElementById('detailsCard').classList.remove('active');
+                const selectedLocationName = this.value;
+                const selectedCategory = document.getElementById('categorySelect').value;
+                
+                if (selectedLocationName === "") {
+                    document.getElementById('cardsContainer').innerHTML = '';
                 } else {
-                    displayDetails(globalData[selectedIndex]);
+                    displayAllAssociatedDetails(selectedLocationName, selectedCategory);
                 }
             });
         }
@@ -217,7 +228,6 @@
             const categories = new Set();
 
             globalData.forEach(row => {
-                // Find column matching 'CATEGORY' or similar casing variation
                 const catValue = row['CATEGORY'] || row['Category'] || row['category'];
                 if (catValue && catValue.trim() !== '') {
                     categories.add(catValue.trim());
@@ -234,69 +244,126 @@
 
         function populateLocationDropdown(filterCategory = '') {
             const locSelect = document.getElementById('locationSelect');
-            
-            // Clear current options except the placeholder
             locSelect.innerHTML = '<option value="">-- Tap to choose --</option>';
 
-            globalData.forEach((row, index) => {
+            const uniqueLocationNames = new Set();
+
+            globalData.forEach(row => {
                 const locationName = row[primaryKey];
                 const catValue = row['CATEGORY'] || row['Category'] || row['category'] || '';
 
                 if (locationName && locationName.trim() !== '') {
-                    // Check if filtering matches
                     if (filterCategory === '' || catValue.trim() === filterCategory) {
-                        const option = document.createElement('option');
-                        option.value = index; // Array reference index
-                        option.textContent = locationName;
-                        locSelect.appendChild(option);
+                        uniqueLocationNames.add(locationName.trim());
                     }
                 }
+            });
+
+            uniqueLocationNames.forEach(locName => {
+                const option = document.createElement('option');
+                option.value = locName; 
+                option.textContent = locName;
+                locSelect.appendChild(option);
             });
         }
 
-        function displayDetails(rowData) {
-            const card = document.getElementById('detailsCard');
-            card.innerHTML = ''; 
+        function displayAllAssociatedDetails(targetLocationName, filterCategory) {
+            const container = document.getElementById('cardsContainer');
+            container.innerHTML = ''; 
 
-            headers.forEach(header => {
-                const value = rowData[header];
-                
-                if (value !== undefined && value !== null && value.trim() !== '') {
-                    const rowDiv = document.createElement('div');
-                    rowDiv.className = 'detail-row';
-                    
-                    const labelDiv = document.createElement('div');
-                    labelDiv.className = 'detail-label';
-                    labelDiv.textContent = header;
-                    
-                    const valueDiv = document.createElement('div');
-                    valueDiv.className = 'detail-value';
-                    
-                    // Hyperlink Parsing Engine
-                    const isLinkColumn = header.toUpperCase() === 'LINK' || header.toUpperCase() === 'URL';
-                    const looksLikeUrl = value.startsWith('http://') || value.startsWith('https://') || value.includes('www.');
-
-                    if (isLinkColumn || looksLikeUrl) {
-                        const cleanUrl = value.startsWith('www.') ? 'https://' + value : value;
-                        
-                        const linkButton = document.createElement('a');
-                        linkButton.href = cleanUrl;
-                        linkButton.target = '_blank';
-                        linkButton.className = 'driver-link';
-                        linkButton.textContent = '🗺️ Open Map Navigation';
-                        
-                        valueDiv.appendChild(linkButton);
-                    } else {
-                        valueDiv.textContent = value;
-                    }
-
-                    rowDiv.appendChild(labelDiv);
-                    rowDiv.appendChild(valueDiv);
-                    card.appendChild(rowDiv);
-                }
+            const matchingRows = globalData.filter(row => {
+                const nameMatch = row[primaryKey] && row[primaryKey].trim() === targetLocationName;
+                const catValue = row['CATEGORY'] || row['Category'] || row['category'] || '';
+                const categoryMatch = filterCategory === '' || catValue.trim() === filterCategory;
+                return nameMatch && categoryMatch;
             });
 
-            card.classList.add('active');
+            matchingRows.forEach((rowData, matchIndex) => {
+                const card = document.createElement('div');
+                card.className = 'card';
+
+                if (matchingRows.length > 1) {
+                    const badge = document.createElement('div');
+                    badge.className = 'card-header-badge';
+                    badge.textContent = `Result ${matchIndex + 1} of ${matchingRows.length}`;
+                    card.appendChild(badge);
+                }
+
+                // 1. Pre-build the unified address string cleanly
+                const rawAddr = rowData['ADDRESS'] || rowData['Address'] || '';
+                const rawCity = rowData['CITY'] || rowData['City'] || '';
+                const rawState = rowData['STATE'] || rowData['State'] || '';
+
+                let addressParts = [];
+                if (rawAddr.trim()) addressParts.push(rawAddr.trim());
+                if (rawCity.trim()) addressParts.push(rawCity.trim());
+                if (rawState.trim()) addressParts.push(rawState.trim());
+                
+                const fullAddressString = addressParts.join(', ');
+
+                // 2. Insert the combined Full Address row first if any address info exists
+                if (fullAddressString) {
+                    const addrRow = document.createElement('div');
+                    addrRow.className = 'detail-row';
+                    
+                    const addrLabel = document.createElement('div');
+                    addrLabel.className = 'detail-label';
+                    addrLabel.textContent = 'FULL ADDRESS';
+                    
+                    const addrValue = document.createElement('div');
+                    addrValue.className = 'detail-value';
+                    addrValue.textContent = fullAddressString;
+                    
+                    addrRow.appendChild(addrLabel);
+                    addrRow.appendChild(addrValue);
+                    card.appendChild(addrRow);
+                }
+
+                // 3. Loop through headers, excluding individual Address/City/State to prevent duplication
+                headers.forEach(header => {
+                    const upperHeader = header.toUpperCase();
+                    if (upperHeader === 'ADDRESS' || upperHeader === 'CITY' || upperHeader === 'STATE') {
+                        return; // Skip rendering these individually
+                    }
+
+                    const value = rowData[header];
+                    
+                    if (value !== undefined && value !== null && value.trim() !== '') {
+                        const rowDiv = document.createElement('div');
+                        rowDiv.className = 'detail-row';
+                        
+                        const labelDiv = document.createElement('div');
+                        labelDiv.className = 'detail-label';
+                        labelDiv.textContent = header;
+                        
+                        const valueDiv = document.createElement('div');
+                        valueDiv.className = 'detail-value';
+                        
+                        const isLinkColumn = upperHeader === 'LINK' || upperHeader === 'URL';
+                        const looksLikeUrl = value.startsWith('http://') || value.startsWith('https://') || value.includes('www.');
+
+                        if (isLinkColumn || looksLikeUrl) {
+                            const cleanUrl = value.startsWith('www.') ? 'https://' + value : value;
+                            
+                            const linkButton = document.createElement('a');
+                            linkButton.href = cleanUrl;
+                            linkButton.target = '_blank';
+                            linkButton.className = 'driver-link';
+                            linkButton.textContent = '🗺️ Open Map Navigation';
+                            
+                            valueDiv.appendChild(linkButton);
+                        } else {
+                            valueDiv.textContent = value;
+                        }
+
+                        rowDiv.appendChild(labelDiv);
+                        rowDiv.appendChild(valueDiv);
+                        card.appendChild(rowDiv);
+                    }
+                });
+
+                container.appendChild(card);
+            });
         }
     </script>
 </body>
