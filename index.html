@@ -158,7 +158,7 @@
         let globalData = [];
         let headers = [];
         let primaryKey = ''; 
-        let nameAreaColumnHeader = ''; // Will hold the dynamic casing variant for 'NAME'
+        let nameAreaColumnHeader = ''; 
 
         Papa.parse(sheetUrl, {
             download: true,
@@ -169,9 +169,9 @@
                 headers = results.meta.fields;
                 
                 if (headers && headers.length > 0 && globalData.length > 0) {
-                    primaryKey = headers[0]; // First column (e.g., 'NAME OF STOP')
+                    primaryKey = headers[0]; // Restored first column header (e.g., 'NAME OF STOP')
                     
-                    // Locate the exact string casing for the 'NAME' or 'NAME OF AREA' column
+                    // Locate the exact string casing for 'NAME' or 'NAME OF AREA'
                     nameAreaColumnHeader = headers.find(h => h.toUpperCase() === 'NAME' || h.toUpperCase() === 'NAME OF AREA') || 'NAME';
                     
                     initUI();
@@ -209,7 +209,7 @@
             const uniqueLocationNames = new Set();
 
             globalData.forEach(row => {
-                const locationName = row[primaryKey];
+                const locationName = row[primaryKey]; // Uses 'NAME OF STOP' for dropdown parsing
                 const catValue = row['CATEGORY'] || row['Category'] || row['category'] || '';
                 
                 if (locationName && locationName.trim() !== '' && catValue.toUpperCase().includes('DOCK')) {
@@ -259,7 +259,7 @@
                         const looksLikeUrl = val.startsWith('http://') || val.startsWith('https://') || val.includes('www.');
 
                         if (isLinkColumn || looksLikeUrl) {
-                            const cleanUrl = val.startsWith('www.') ? 'https://' + value : val;
+                            const cleanUrl = val.startsWith('www.') ? 'https://' + val : val;
                             const linkButton = document.createElement('a');
                             linkButton.href = cleanUrl;
                             linkButton.target = '_blank';
@@ -276,9 +276,8 @@
                     }
                 }
 
-                // 1. ALWAYS Force 'NAME' or 'NAME OF AREA' to be the absolute first item listed
-                // We use the exact header fallback name matched from the data initialization step
-                createDetailRow('NAME OF AREA', rowData[nameAreaColumnHeader]);
+                // 1. Force the layout to show 'NAME' (Averitt) at the top of the card
+                createDetailRow('NAME', rowData[nameAreaColumnHeader]);
 
                 // 2. Pre-build and insert the consolidated Full Address row second
                 const rawAddr = rowData['ADDRESS'] || rowData['Address'] || '';
@@ -295,10 +294,11 @@
                     createDetailRow('FULL ADDRESS', fullAddressString);
                 }
 
-                // 3. Loop through remaining headers, bypassing variables already manually handled
+                // 3. Loop through remaining headers, bypassing variables manually handled
                 headers.forEach(header => {
                     const upperHeader = header.toUpperCase();
-                    // FIXED: explicitly skips 'NAME OF STOP' along with address components to ensure it never renders twice
+                    
+                    // Strips 'NAME OF STOP' completely from the generated card layout output
                     if (header === primaryKey || header === nameAreaColumnHeader || upperHeader === 'ADDRESS' || upperHeader === 'CITY' || upperHeader === 'STATE') {
                         return; 
                     }
