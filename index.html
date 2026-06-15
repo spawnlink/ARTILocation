@@ -6,6 +6,7 @@
     <title>Driver Destination Lookup</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
+        /* Mobile-First CSS Variables & Reset */
         :root {
             --primary-bg: #f4f7f6;
             --card-bg: #ffffff;
@@ -15,7 +16,11 @@
             --accent-color: #2563eb;
         }
 
-        * { box-sizing: border-box; margin: 0; padding: 0; }
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
 
         body { 
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
@@ -26,9 +31,24 @@
             color: var(--text-main); 
         }
 
-        h1 { text-align: center; font-size: 1.5rem; margin-bottom: 20px; color: var(--text-main); }
-        .control-group { margin-bottom: 24px; }
-        label { display: block; margin-bottom: 8px; font-weight: 600; color: var(--text-main); }
+        h1 { 
+            text-align: center; 
+            font-size: 1.5rem; 
+            margin-bottom: 20px;
+            color: var(--text-main);
+        }
+
+        .control-group { 
+            margin-bottom: 16px; 
+        }
+
+        label { 
+            display: block; 
+            margin-bottom: 6px; 
+            font-weight: 600; 
+            color: var(--text-main);
+            font-size: 0.9rem;
+        }
 
         select { 
             width: 100%; 
@@ -52,16 +72,69 @@
             box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06); 
             display: none; 
             overflow: hidden;
+            margin-top: 24px;
         }
 
-        .card.active { display: block; animation: fadeIn 0.3s ease-in-out; }
-        .detail-row { border-bottom: 1px solid var(--border-color); padding: 16px 20px; display: flex; flex-direction: column; }
-        .detail-row:last-child { border-bottom: none; }
-        .detail-label { font-weight: 600; color: var(--text-muted); font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
-        .detail-value { font-size: 1.1rem; line-height: 1.4; word-wrap: break-word; }
-        .loading { text-align: center; padding: 40px 20px; font-size: 1.1rem; color: var(--text-muted); }
-        .error-text { color: #dc2626; font-weight: 600; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .card.active { 
+            display: block; 
+            animation: fadeIn 0.3s ease-in-out;
+        }
+
+        .detail-row { 
+            border-bottom: 1px solid var(--border-color); 
+            padding: 16px 20px; 
+            display: flex; 
+            flex-direction: column; 
+        }
+
+        .detail-row:last-child { 
+            border-bottom: none; 
+        }
+
+        .detail-label { 
+            font-weight: 600; 
+            color: var(--text-muted); 
+            font-size: 0.85rem; 
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 6px; 
+        }
+
+        .detail-value { 
+            font-size: 1.1rem; 
+            line-height: 1.4;
+            word-wrap: break-word;
+        }
+
+        /* Large touch-friendly link styling for drivers */
+        .driver-link {
+            display: inline-block;
+            color: #ffffff;
+            background-color: var(--accent-color);
+            padding: 12px 20px;
+            border-radius: 6px;
+            text-decoration: none;
+            font-weight: 600;
+            margin-top: 4px;
+            text-align: center;
+            box-shadow: 0 2px 4px rgba(37, 99, 235, 0.2);
+        }
+
+        .driver-link:active {
+            background-color: #1d4ed8;
+        }
+
+        .loading { 
+            text-align: center; 
+            padding: 40px 20px; 
+            font-size: 1.1rem;
+            color: var(--text-muted); 
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
     </style>
 </head>
 <body>
@@ -70,11 +143,20 @@
 
     <div id="loading" class="loading">Loading latest routes...</div>
 
-    <div class="control-group" id="selector-group" style="display: none;">
-        <label for="locationSelect">Select Destination</label>
-        <select id="locationSelect">
-            <option value="">-- Tap to choose --</option>
-        </select>
+    <div id="ui-container" style="display: none;">
+        <div class="control-group">
+            <label for="categorySelect">1. Filter by Category</label>
+            <select id="categorySelect">
+                <option value="">-- Show All Categories --</option>
+            </select>
+        </div>
+
+        <div class="control-group">
+            <label for="locationSelect">2. Select Destination</label>
+            <select id="locationSelect">
+                <option value="">-- Tap to choose --</option>
+            </select>
+        </div>
     </div>
 
     <div id="detailsCard" class="card"></div>
@@ -84,51 +166,90 @@
         
         let globalData = [];
         let headers = [];
+        let primaryKey = ''; // Will hold the first column header name dynamically
 
-        console.log('🛑 [DEBUG] Bypassing fetch rules for local testing.');
-
-        // Using Papa.parse directly with download:true completely bypasses the stricter Fetch CORS error locally
         Papa.parse(sheetUrl, {
             download: true,
             header: true,
             skipEmptyLines: true,
             complete: function(results) {
-                console.log(`🛑 [DEBUG] PapaParse success. Rows loaded: ${results.data.length}`);
                 globalData = results.data;
                 headers = results.meta.fields;
                 
                 if (headers && headers.length > 0 && globalData.length > 0) {
-                    populateDropdown(headers[0]);
-                    document.getElementById('loading').style.display = 'none';
-                    document.getElementById('selector-group').style.display = 'block';
+                    primaryKey = headers[0]; // First column (e.g., 'NAME OF STOP')
+                    initUI();
                 } else {
-                    document.getElementById('loading').innerHTML = '<span class="error-text">No data found in the spreadsheet.</span>';
+                    document.getElementById('loading').innerText = 'No data found in the spreadsheet.';
                 }
             },
             error: function(err) {
-                console.error('🛑 PapaParse native download failed:', err);
-                document.getElementById('loading').innerHTML = '<span class="error-text">Still blocked by local browser safety settings. Please upload file to GitHub Pages to fix.</span>';
+                document.getElementById('loading').innerText = 'Error parsing data.';
+                console.error(err);
             }
         });
 
-        function populateDropdown(firstColName) {
-            const select = document.getElementById('locationSelect');
-            globalData.forEach((row, index) => {
-                const locationName = row[firstColName];
-                if (locationName && locationName.trim() !== '') {
-                    const option = document.createElement('option');
-                    option.value = index; 
-                    option.textContent = locationName;
-                    select.appendChild(option);
-                }
+        function initUI() {
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('ui-container').style.display = 'block';
+
+            populateCategoryDropdown();
+            populateLocationDropdown(); // Initially load all locations
+
+            // Setup Event Listeners
+            document.getElementById('categorySelect').addEventListener('change', function() {
+                populateLocationDropdown(this.value);
+                document.getElementById('detailsCard').classList.remove('active'); // Hide card on filter change
             });
 
-            select.addEventListener('change', function(e) {
-                const selectedIndex = e.target.value;
+            document.getElementById('locationSelect').addEventListener('change', function() {
+                const selectedIndex = this.value;
                 if (selectedIndex === "") {
                     document.getElementById('detailsCard').classList.remove('active');
                 } else {
                     displayDetails(globalData[selectedIndex]);
+                }
+            });
+        }
+
+        function populateCategoryDropdown() {
+            const catSelect = document.getElementById('categorySelect');
+            const categories = new Set();
+
+            globalData.forEach(row => {
+                // Find column matching 'CATEGORY' or similar casing variation
+                const catValue = row['CATEGORY'] || row['Category'] || row['category'];
+                if (catValue && catValue.trim() !== '') {
+                    categories.add(catValue.trim());
+                }
+            });
+
+            categories.forEach(cat => {
+                const opt = document.createElement('option');
+                opt.value = cat;
+                opt.textContent = cat;
+                catSelect.appendChild(opt);
+            });
+        }
+
+        function populateLocationDropdown(filterCategory = '') {
+            const locSelect = document.getElementById('locationSelect');
+            
+            // Clear current options except the placeholder
+            locSelect.innerHTML = '<option value="">-- Tap to choose --</option>';
+
+            globalData.forEach((row, index) => {
+                const locationName = row[primaryKey];
+                const catValue = row['CATEGORY'] || row['Category'] || row['category'] || '';
+
+                if (locationName && locationName.trim() !== '') {
+                    // Check if filtering matches
+                    if (filterCategory === '' || catValue.trim() === filterCategory) {
+                        const option = document.createElement('option');
+                        option.value = index; // Array reference index
+                        option.textContent = locationName;
+                        locSelect.appendChild(option);
+                    }
                 }
             });
         }
@@ -139,6 +260,7 @@
 
             headers.forEach(header => {
                 const value = rowData[header];
+                
                 if (value !== undefined && value !== null && value.trim() !== '') {
                     const rowDiv = document.createElement('div');
                     rowDiv.className = 'detail-row';
@@ -150,15 +272,20 @@
                     const valueDiv = document.createElement('div');
                     valueDiv.className = 'detail-value';
                     
-                    if (value.startsWith('http://') || value.startsWith('https://')) {
-                        const link = document.createElement('a');
-                        link.href = value;
-                        link.target = '_blank';
-                        link.textContent = 'Open Link';
-                        link.style.color = 'var(--accent-color)';
-                        link.style.textDecoration = 'none';
-                        link.style.fontWeight = '500';
-                        valueDiv.appendChild(link);
+                    // Hyperlink Parsing Engine
+                    const isLinkColumn = header.toUpperCase() === 'LINK' || header.toUpperCase() === 'URL';
+                    const looksLikeUrl = value.startsWith('http://') || value.startsWith('https://') || value.includes('www.');
+
+                    if (isLinkColumn || looksLikeUrl) {
+                        const cleanUrl = value.startsWith('www.') ? 'https://' + value : value;
+                        
+                        const linkButton = document.createElement('a');
+                        linkButton.href = cleanUrl;
+                        linkButton.target = '_blank';
+                        linkButton.className = 'driver-link';
+                        linkButton.textContent = '🗺️ Open Map Navigation';
+                        
+                        valueDiv.appendChild(linkButton);
                     } else {
                         valueDiv.textContent = value;
                     }
@@ -168,6 +295,7 @@
                     card.appendChild(rowDiv);
                 }
             });
+
             card.classList.add('active');
         }
     </script>
