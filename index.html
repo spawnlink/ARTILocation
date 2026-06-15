@@ -145,7 +145,7 @@
         <div class="control-group">
             <label for="locationSelect">1. Select Destination</label>
             <select id="locationSelect">
-                <option value="">-- Tap to choose destination --</option>
+                <option value="">-- Tap to choose location --</option>
             </select>
         </div>
 
@@ -164,9 +164,9 @@
         
         let globalData = [];
         let headers = [];
-        let firstColumnHeader = ''; 
-        let seventhColumnHeader = '';
-        let secondColumnHeader = '';
+        let primaryKey = ''; // 1st Column Header (NAME OF STOP)
+        let nameAreaColumnHeader = ''; // 2nd Column Header (NAME)
+        let categoryColumnHeader = ''; // 7th Column Header (CATEGORY)
 
         Papa.parse(sheetUrl, {
             download: true,
@@ -177,10 +177,9 @@
                 headers = results.meta.fields;
                 
                 if (headers && headers.length > 0 && globalData.length > 0) {
-                    // Map headers precisely by exact column coordinates to prevent naming breakdown issues
-                    firstColumnHeader = headers[0]; 
-                    secondColumnHeader = headers[1] || 'NAME';
-                    seventhColumnHeader = headers[6] || 'CATEGORY';
+                    primaryKey = headers[0]; // 1st column
+                    nameAreaColumnHeader = headers[1] || 'NAME'; // 2nd column
+                    categoryColumnHeader = headers[6] || 'CATEGORY'; // 7th column
                     
                     initUI();
                 } else {
@@ -215,22 +214,20 @@
                 const selectedLocationName = document.getElementById('locationSelect').value;
                 const selectedCategory = this.value;
                 
-                if (selectedLocationName !== "" && selectedCategory !== "") {
+                if (selectedLocationName !== "") {
                     displayFilteredDetails(selectedLocationName, selectedCategory);
-                } else {
-                    document.getElementById('cardsContainer').innerHTML = '';
                 }
             });
         }
 
         function populateLocationDropdown() {
             const locSelect = document.getElementById('locationSelect');
-            locSelect.innerHTML = '<option value="">-- Tap to choose destination --</option>';
+            locSelect.innerHTML = '<option value="">-- Tap to choose location --</option>';
 
             const uniqueLocationNames = new Set();
 
             globalData.forEach(row => {
-                const locationName = row[firstColumnHeader];
+                const locationName = row[primaryKey];
                 if (locationName && locationName.trim() !== '') {
                     uniqueLocationNames.add(locationName.trim());
                 }
@@ -246,18 +243,23 @@
 
         function populateCategoryDropdown(selectedLocationName) {
             const catSelect = document.getElementById('categorySelect');
-            catSelect.innerHTML = '<option value="">-- Select Type of Stop --</option>';
+            catSelect.innerHTML = '<option value="">-- Select Alternate Type --</option>';
             catSelect.disabled = false;
 
             const associatedCategories = new Set();
+            let matchedDockString = '';
 
-            // Gather all 7th column options linked to the 1st column choice
             globalData.forEach(row => {
-                const nameMatch = row[firstColumnHeader] && row[firstColumnHeader].trim() === selectedLocationName;
+                const nameMatch = row[primaryKey] && row[primaryKey].trim() === selectedLocationName;
                 if (nameMatch) {
-                    const catValue = row[seventhColumnHeader];
+                    const catValue = row[categoryColumnHeader];
                     if (catValue && catValue.trim() !== '') {
-                        associatedCategories.add(catValue.trim());
+                        const cleanCat = catValue.trim();
+                        associatedCategories.add(cleanCat);
+                        
+                        if (cleanCat.toUpperCase().includes('DOCK') && !matchedDockString) {
+                            matchedDockString = cleanCat;
+                        }
                     }
                 }
             });
@@ -266,14 +268,24 @@
                 const opt = document.createElement('option');
                 opt.value = cat;
                 opt.textContent = cat;
+                
+                // If this item is our default auto-loaded dock, mark it as selected in the drop-down
+                if (cat === matchedDockString) {
+                    opt.selected = true;
+                }
                 catSelect.appendChild(opt);
             });
 
-            // If there's exactly one option, auto-select it for the driver
-            if (associatedCategories.size === 1) {
-                const singleCat = Array.from(associatedCategories)[0];
-                catSelect.value = singleCat;
-                displayFilteredDetails(selectedLocationName, singleCat);
+            // Auto-load matching dock data to screen immediately
+            if (matchedDockString) {
+                displayFilteredDetails(selectedLocationName, matchedDockString);
+            } else if (associatedCategories.size > 0) {
+                const firstAvailableCat = Array.from(associatedCategories)[0];
+                displayFilteredDetails(selectedLocationName, firstAvailableCat);
+                // Set the dropdown to match the fallback choice
+                catSelect.value = firstAvailableCat;
+            } else {
+                displayFilteredDetails(selectedLocationName, '');
             }
         }
 
@@ -287,11 +299,19 @@
             const container = document.getElementById('cardsContainer');
             container.innerHTML = ''; 
 
-            const matchingRows = globalData.filter(row => {
-                const nameMatch = row[firstColumnHeader] && row[firstColumnHeader].trim() === targetLocationName;
-                const catValue = row[seventhColumnHeader] || '';
+            let matchingRows = globalData.filter(row => {
+                const nameMatch = row[primaryKey] && row[primaryKey].trim() === targetLocationName;
+                const catValue = row[categoryColumnHeader] || '';
+                
+                if (filterCategory === '') {
+                    return nameMatch && catValue.trim().toUpperCase().includes('DOCK');
+                }
                 return nameMatch && catValue.trim() === filterCategory;
             });
+
+            if (matchingRows.length === 0 && filterCategory === '') {
+                matchingRows = globalData.filter(row => row[primaryKey] && row[primaryKey].trim() === targetLocationName);
+            }
 
             matchingRows.forEach(rowData => {
                 const card = document.createElement('div');
@@ -330,10 +350,10 @@
                     }
                 }
 
-                // 1. Force the layout to show column 2 ('NAME') at the top of the card
-                createDetailRow('NAME', rowData[secondColumnHeader]);
+                // 1. Force Column 2 (NAME) to render at the absolute top of the card
+                createDetailRow('NAME', rowData[nameAreaColumnHeader]);
 
-                // 2. Build and insert the consolidated Full Address row second
+                // 2. Insert the combined Full Address row second
                 const rawAddr = rowData['ADDRESS'] || rowData['Address'] || '';
                 const rawCity = rowData['CITY'] || rowData['City'] || '';
                 const rawState = rowData['STATE'] || rowData['State'] || '';
@@ -348,12 +368,10 @@
                     createDetailRow('FULL ADDRESS', fullAddressString);
                 }
 
-                // 3. Loop through remaining headers, bypassing variables already manually handled
+                // 3. Loop through remaining headers, hiding Column 1 (primaryKey) from the card display
                 headers.forEach(header => {
                     const upperHeader = header.toUpperCase();
-                    
-                    // Strips column 1 completely from the displayed layout output
-                    if (header === firstColumnHeader || header === secondColumnHeader || upperHeader === 'ADDRESS' || upperHeader === 'CITY' || upperHeader === 'STATE') {
+                    if (header === primaryKey || header === nameAreaColumnHeader || upperHeader === 'ADDRESS' || upperHeader === 'CITY' || upperHeader === 'STATE') {
                         return; 
                     }
                     createDetailRow(header, rowData[header]);
