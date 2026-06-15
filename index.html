@@ -143,16 +143,9 @@
 
     <div id="ui-container" style="display: none;">
         <div class="control-group">
-            <label for="locationSelect">1. Select Destination</label>
+            <label for="locationSelect">Select Destination</label>
             <select id="locationSelect">
                 <option value="">-- Tap to choose location --</option>
-            </select>
-        </div>
-
-        <div class="control-group">
-            <label for="categorySelect">2. Filter by Type of Stop</label>
-            <select id="categorySelect" disabled>
-                <option value="">-- Choose destination first --</option>
             </select>
         </div>
     </div>
@@ -165,6 +158,7 @@
         let globalData = [];
         let headers = [];
         let primaryKey = ''; 
+        let nameAreaColumnHeader = ''; // Will hold the dynamic casing variant for 'NAME'
 
         Papa.parse(sheetUrl, {
             download: true,
@@ -175,7 +169,11 @@
                 headers = results.meta.fields;
                 
                 if (headers && headers.length > 0 && globalData.length > 0) {
-                    primaryKey = headers[0]; 
+                    primaryKey = headers[0]; // First column (e.g., 'NAME OF STOP')
+                    
+                    // Locate the exact string casing for the 'NAME' or 'NAME OF AREA' column
+                    nameAreaColumnHeader = headers.find(h => h.toUpperCase() === 'NAME' || h.toUpperCase() === 'NAME OF AREA') || 'NAME';
+                    
                     initUI();
                 } else {
                     document.getElementById('loading').innerText = 'No data found in the spreadsheet.';
@@ -196,21 +194,10 @@
             // Setup Listeners
             document.getElementById('locationSelect').addEventListener('change', function() {
                 const selectedLocationName = this.value;
-                document.getElementById('cardsContainer').innerHTML = ''; 
-                
                 if (selectedLocationName === "") {
-                    resetCategoryDropdown();
+                    document.getElementById('cardsContainer').innerHTML = ''; 
                 } else {
-                    populateCategoryDropdown(selectedLocationName);
-                }
-            });
-
-            document.getElementById('categorySelect').addEventListener('change', function() {
-                const selectedLocationName = document.getElementById('locationSelect').value;
-                const selectedCategory = this.value;
-                
-                if (selectedLocationName !== "") {
-                    displayFilteredDetails(selectedLocationName, selectedCategory);
+                    displayDockDetails(selectedLocationName);
                 }
             });
         }
@@ -223,7 +210,9 @@
 
             globalData.forEach(row => {
                 const locationName = row[primaryKey];
-                if (locationName && locationName.trim() !== '') {
+                const catValue = row['CATEGORY'] || row['Category'] || row['category'] || '';
+                
+                if (locationName && locationName.trim() !== '' && catValue.toUpperCase().includes('DOCK')) {
                     uniqueLocationNames.add(locationName.trim());
                 }
             });
@@ -236,73 +225,17 @@
             });
         }
 
-        function populateCategoryDropdown(selectedLocationName) {
-            const catSelect = document.getElementById('categorySelect');
-            catSelect.innerHTML = '<option value="">-- Select Alternate Type --</option>';
-            catSelect.disabled = false;
-
-            const associatedCategories = new Set();
-            let matchedDockString = '';
-
-            globalData.forEach(row => {
-                const nameMatch = row[primaryKey] && row[primaryKey].trim() === selectedLocationName;
-                if (nameMatch) {
-                    const catValue = row['CATEGORY'] || row['Category'] || row['category'];
-                    if (catValue && catValue.trim() !== '') {
-                        const cleanCat = catValue.trim();
-                        associatedCategories.add(cleanCat);
-                        
-                        // FIXED: Evaluates if the column text contains "dock" as a substring
-                        if (cleanCat.toUpperCase().includes('DOCK') && !matchedDockString) {
-                            matchedDockString = cleanCat;
-                        }
-                    }
-                }
-            });
-
-            associatedCategories.forEach(cat => {
-                const opt = document.createElement('option');
-                opt.value = cat;
-                opt.textContent = cat;
-                catSelect.appendChild(opt);
-            });
-
-            // If a valid dock entry phrase variant is located, display it right away.
-            // Otherwise, resort to showing the first row structure available.
-            if (matchedDockString) {
-                displayFilteredDetails(selectedLocationName, matchedDockString);
-            } else if (associatedCategories.size > 0) {
-                const firstAvailableCat = Array.from(associatedCategories)[0];
-                displayFilteredDetails(selectedLocationName, firstAvailableCat);
-            } else {
-                displayFilteredDetails(selectedLocationName, '');
-            }
-        }
-
-        function resetCategoryDropdown() {
-            const catSelect = document.getElementById('categorySelect');
-            catSelect.innerHTML = '<option value="">-- Choose destination first --</option>';
-            catSelect.disabled = true;
-        }
-
-        function displayFilteredDetails(targetLocationName, filterCategory) {
+        function displayDockDetails(targetLocationName) {
             const container = document.getElementById('cardsContainer');
             container.innerHTML = ''; 
 
             let matchingRows = globalData.filter(row => {
                 const nameMatch = row[primaryKey] && row[primaryKey].trim() === targetLocationName;
                 const catValue = row['CATEGORY'] || row['Category'] || row['category'] || '';
-                
-                // If the dynamic fallback parameter hits an empty state string expression, default to tracking down "DOCK"
-                if (filterCategory === '') {
-                    return nameMatch && catValue.trim().toUpperCase().includes('DOCK');
-                }
-                
-                return nameMatch && catValue.trim() === filterCategory;
+                return nameMatch && catValue.trim().toUpperCase().includes('DOCK');
             });
 
-            // Hard safety recovery catch loop logic block
-            if (matchingRows.length === 0 && filterCategory === '') {
+            if (matchingRows.length === 0) {
                 matchingRows = globalData.filter(row => row[primaryKey] && row[primaryKey].trim() === targetLocationName);
             }
 
@@ -310,6 +243,44 @@
                 const card = document.createElement('div');
                 card.className = 'card';
 
+                function createDetailRow(label, val) {
+                    if (val !== undefined && val !== null && val.trim() !== '') {
+                        const rowDiv = document.createElement('div');
+                        rowDiv.className = 'detail-row';
+                        
+                        const labelDiv = document.createElement('div');
+                        labelDiv.className = 'detail-label';
+                        labelDiv.textContent = label;
+                        
+                        const valueDiv = document.createElement('div');
+                        valueDiv.className = 'detail-value';
+                        
+                        const isLinkColumn = label.toUpperCase() === 'LINK' || label.toUpperCase() === 'URL';
+                        const looksLikeUrl = val.startsWith('http://') || val.startsWith('https://') || val.includes('www.');
+
+                        if (isLinkColumn || looksLikeUrl) {
+                            const cleanUrl = val.startsWith('www.') ? 'https://' + value : val;
+                            const linkButton = document.createElement('a');
+                            linkButton.href = cleanUrl;
+                            linkButton.target = '_blank';
+                            linkButton.className = 'driver-link';
+                            linkButton.textContent = '🗺️ Open Map Navigation';
+                            valueDiv.appendChild(linkButton);
+                        } else {
+                            valueDiv.textContent = val;
+                        }
+
+                        rowDiv.appendChild(labelDiv);
+                        rowDiv.appendChild(valueDiv);
+                        card.appendChild(rowDiv);
+                    }
+                }
+
+                // 1. ALWAYS Force 'NAME' or 'NAME OF AREA' to be the absolute first item listed
+                // We use the exact header fallback name matched from the data initialization step
+                createDetailRow('NAME OF AREA', rowData[nameAreaColumnHeader]);
+
+                // 2. Pre-build and insert the consolidated Full Address row second
                 const rawAddr = rowData['ADDRESS'] || rowData['Address'] || '';
                 const rawCity = rowData['CITY'] || rowData['City'] || '';
                 const rawState = rowData['STATE'] || rowData['State'] || '';
@@ -320,64 +291,18 @@
                 if (rawState.trim()) addressParts.push(rawState.trim());
                 
                 const fullAddressString = addressParts.join(', ');
-
                 if (fullAddressString) {
-                    const addrRow = document.createElement('div');
-                    addrRow.className = 'detail-row';
-                    
-                    const addrLabel = document.createElement('div');
-                    addrLabel.className = 'detail-label';
-                    addrLabel.textContent = 'FULL ADDRESS';
-                    
-                    const addrValue = document.createElement('div');
-                    addrValue.className = 'detail-value';
-                    addrValue.textContent = fullAddressString;
-                    
-                    addrRow.appendChild(addrLabel);
-                    addrRow.appendChild(addrValue);
-                    card.appendChild(addrRow);
+                    createDetailRow('FULL ADDRESS', fullAddressString);
                 }
 
+                // 3. Loop through remaining headers, bypassing variables already manually handled
                 headers.forEach(header => {
                     const upperHeader = header.toUpperCase();
-                    if (upperHeader === 'ADDRESS' || upperHeader === 'CITY' || upperHeader === 'STATE') {
+                    // FIXED: explicitly skips 'NAME OF STOP' along with address components to ensure it never renders twice
+                    if (header === primaryKey || header === nameAreaColumnHeader || upperHeader === 'ADDRESS' || upperHeader === 'CITY' || upperHeader === 'STATE') {
                         return; 
                     }
-
-                    const value = rowData[header];
-                    
-                    if (value !== undefined && value !== null && value.trim() !== '') {
-                        const rowDiv = document.createElement('div');
-                        rowDiv.className = 'detail-row';
-                        
-                        const labelDiv = document.createElement('div');
-                        labelDiv.className = 'detail-label';
-                        labelDiv.textContent = header;
-                        
-                        const valueDiv = document.createElement('div');
-                        valueDiv.className = 'detail-value';
-                        
-                        const isLinkColumn = upperHeader === 'LINK' || upperHeader === 'URL';
-                        const looksLikeUrl = value.startsWith('http://') || value.startsWith('https://') || value.includes('www.');
-
-                        if (isLinkColumn || looksLikeUrl) {
-                            const cleanUrl = value.startsWith('www.') ? 'https://' + value : value;
-                            
-                            const linkButton = document.createElement('a');
-                            linkButton.href = cleanUrl;
-                            linkButton.target = '_blank';
-                            linkButton.className = 'driver-link';
-                            linkButton.textContent = '🗺️ Open Map Navigation';
-                            
-                            valueDiv.appendChild(linkButton);
-                        } else {
-                            valueDiv.textContent = value;
-                        }
-
-                        rowDiv.appendChild(labelDiv);
-                        rowDiv.appendChild(valueDiv);
-                        card.appendChild(rowDiv);
-                    }
+                    createDetailRow(header, rowData[header]);
                 });
 
                 container.appendChild(card);
